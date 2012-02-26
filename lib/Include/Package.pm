@@ -17,11 +17,121 @@ use English qw/ -no_match_vars /;
 
 
 our $VERSION     = version->new('0.0.1');
-our @EXPORT_OK   = qw//;
+our @EXPORT_OK   = qw/load/;
 our %EXPORT_TAGS = ();
 #our @EXPORT      = qw//;
+our %distributions;
 
+has file => (
+    is       => 'ro',
+    isa      => 'Str',
+    required => 1,
+);
+has distribution => (
+    is       => 'ro',
+    isa      => 'Str',
+    required => 1,
+);
+has version => (
+    is       => 'ro',
+    isa      => 'Str',
+    required => 1,
+);
+has name => (
+    is       => 'ro',
+    isa      => 'Str',
+    required => 1,
+);
+has package => (
+    is       => 'rw',
+    isa      => 'Archive::Simple',
+    lazy     => 1,
+    builder  => '_build_package',
+    init_arg => undef,
+);
 
+sub load {
+    my ( $distribution, $version_match, $name ) = @_;
+    my %searched;
+
+    $version_match = ref $version_match ? $version_match : [$version_match];
+
+    # find all distribution available
+    if ( !$distributions{$distribution} ) {
+        for my $dir (@INC) {
+            next if !-d $dir;
+            next if $searched{$dir}++;
+
+            my @packages = glob("$dir/$distribution-*.pla");
+            next if !@packages;
+
+            for my $package_version (@packages) {
+                my ($version) = $package_version =~ /^$dir\/$distribution-([\d._]+).pla/;
+                next if !$version;
+
+                next if $distributions{$distribution}{$version};
+                $distributions{$distribution}{$version} = $package_version;
+            }
+        }
+    }
+
+    # find the best matching package version
+    my $found_version;
+    for my $version ( sort \&_num_sort, keys %{ $distributions{$distribution} } ) {
+        if (!$version_match) {
+            $found_version = $version;
+            last;
+        }
+        else {
+            my $matched;
+            # must match all version specifications
+            for my $match ( @{ $version_match } ) {
+                # TODO need to get better version testing
+                my $this = eval "version->new($version) $match";  ## no critic
+                if ($this) {
+                    $matched = 1;
+                }
+                else {
+                    $matched = 0;
+                    last;
+                }
+            }
+
+            if ( $matched ) {
+                # first distribution matched is one to use
+                $found_version = $version;
+                last;
+            }
+        }
+    }
+
+    if (!$found_version) {
+        confess "Could not load distrbution $distribution!\nTry installing it into you \@INC path\n";
+    }
+
+    return __PACKAGE__->new(
+        file => $distributions{$distribution}{$found_version},
+        distribution => $distribution,
+        name         => $name,
+        version      => $found_version,
+    );
+}
+
+sub _num_sort {
+    no warnings qw/once/; ## no critic
+
+    my $A = $a;
+    my $B = $b;
+
+    $A =~ s/(\d+)/sprintf "%09d", $1/egxms;
+    $B =~ s/(\d+)/sprintf "%09d", $1/egxms;
+
+    return $A cmp $B;
+}
+
+sub _build_package {
+    return Archive::Simple->new( name => $_[0]->file );
+}
 
 1;
 
@@ -47,66 +157,21 @@ This documentation refers to Include::Package version 0.1.
 
 =head1 DESCRIPTION
 
-A full description of the module and its features.
-
-May include numerous subsections (i.e., =head2, =head3, etc.).
-
 
 =head1 SUBROUTINES/METHODS
 
-A separate section listing the public components of the module's interface.
-
-These normally consist of either subroutines that may be exported, or methods
-that may be called on objects belonging to the classes that the module
-provides.
-
-Name the section accordingly.
-
-In an object-oriented module, this section should begin with a sentence (of the
-form "An object of this class represents ...") to give the reader a high-level
-context to help them understand the methods that are subsequently described.
-
-
+=head2 load($distribution, $which_versions, $name)
 
 
 =head1 DIAGNOSTICS
 
-A list of every error and warning message that the module can generate (even
-the ones that will "never happen"), with a full explanation of each problem,
-one or more likely causes, and any suggested remedies.
-
 =head1 CONFIGURATION AND ENVIRONMENT
-
-A full explanation of any configuration system(s) used by the module, including
-the names and locations of any configuration files, and the meaning of any
-environment variables or properties that can be set. These descriptions must
-also include details of any configuration language used.
 
 =head1 DEPENDENCIES
 
-A list of all of the other modules that this module relies upon, including any
-restrictions on versions, and an indication of whether these required modules
-are part of the standard Perl distribution, part of the module's distribution,
-or must be installed separately.
-
 =head1 INCOMPATIBILITIES
 
-A list of any modules that this module cannot be used in conjunction with.
-This may be due to name conflicts in the interface, or competition for system
-or program resources, or due to internal limitations of Perl (for example, many
-modules that use source code filters are mutually incompatible).
-
 =head1 BUGS AND LIMITATIONS
-
-A list of known problems with the module, together with some indication of
-whether they are likely to be fixed in an upcoming release.
-
-Also, a list of restrictions on the features the module does provide: data types
-that cannot be handled, performance issues and the circumstances in which they
-may arise, practical limitations on the size of data sets, special cases that
-are not (yet) handled, etc.
-
-The initial template usually just has:
 
 There are no known bugs in this module.
 
@@ -117,7 +182,6 @@ Patches are welcome.
 =head1 AUTHOR
 
 Ivan Wills - (ivan.wills@gmail.com)
-<Author name(s)>  (<contact address>)
 
 =head1 LICENSE AND COPYRIGHT
 
