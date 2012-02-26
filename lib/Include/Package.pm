@@ -14,7 +14,7 @@ use List::Util;
 #use List::MoreUtils;
 use Data::Dumper qw/Dumper/;
 use English qw/ -no_match_vars /;
-
+use Archive::Simple;
 
 our $VERSION     = version->new('0.0.1');
 our @EXPORT_OK   = qw/load/;
@@ -54,7 +54,10 @@ sub load {
     my ( $distribution, $version_match, $name ) = @_;
     my %searched;
 
-    $version_match = ref $version_match ? $version_match : [$version_match];
+    $version_match
+    = !defined $version_match ? undef
+    : ref $version_match      ? $version_match
+    :                          [$version_match];
 
     # find all distribution available
     if ( !$distributions{$distribution} ) {
@@ -75,9 +78,10 @@ sub load {
         }
     }
 
+    #warn Dumper \%distributions;
     # find the best matching package version
     my $found_version;
-    for my $version ( sort \&_num_sort, keys %{ $distributions{$distribution} } ) {
+    for my $version ( reverse sort _num_sort keys %{ $distributions{$distribution} } ) {
         if (!$version_match) {
             $found_version = $version;
             last;
@@ -86,9 +90,7 @@ sub load {
             my $matched;
             # must match all version specifications
             for my $match ( @{ $version_match } ) {
-                # TODO need to get better version testing
-                my $this = eval "version->new($version) $match";  ## no critic
-                if ($this) {
+                if ( _check_version($version, $match) ) {
                     $matched = 1;
                 }
                 else {
@@ -117,6 +119,21 @@ sub load {
     );
 }
 
+sub _check_version {
+    my ($version, $test) = @_;
+
+    my ($scheme, $value) = $test =~ /^\s* ( [!=<>]{1,2} )? \s* ([\d._]+) \s* $/xms;
+
+    return
+         !$scheme || $scheme eq '==' ? version->new($version) == version->new($value)
+        : $scheme eq '!='            ? version->new($version) != version->new($value)
+        : $scheme eq '>'             ? version->new($version) >  version->new($value)
+        : $scheme eq '<'             ? version->new($version) <  version->new($value)
+        : $scheme eq '>='            ? version->new($version) >= version->new($value)
+        : $scheme eq '<='            ? version->new($version) <= version->new($value)
+        :                              confess "Unknown version comparison scheme $scheme";
+}
+
 sub _num_sort {
     no warnings qw/once/; ## no critic
 
@@ -131,6 +148,18 @@ sub _num_sort {
 
 sub _build_package {
     return Archive::Simple->new( name => $_[0]->file );
+}
+
+sub use {
+    my ($self, $module, @import) = @_;
+
+    my $pkg = $self->package;
+    $pkg->process;
+
+    my $file = $pkg->packages->{$module} || confess q{'} . $self->distribution . "' doesn't contain $module (as of version " . $self->version . ")\n";
+
+    my $code = $pkg->show($file);
+    eval $code;
 }
 
 1;
@@ -160,8 +189,31 @@ This documentation refers to Include::Package version 0.1.
 
 =head1 SUBROUTINES/METHODS
 
-=head2 load($distribution, $which_versions, $name)
+=head2 load($distribution, $which, $name)
 
+C<$distribution> - The name of the distribution to load
+
+C<$which> - Choose distribution version
+
+=over 4
+
+=item SCALAR
+
+Should be of the form operator space version eg '== 1.0', '> 0.9', '<= 5.1', '!= 2.7'
+
+=item ARRAYREF
+
+A list of scalar values conforming to the SCALAR syntax above
+
+=item HASHREF
+
+TODO - Will allow author names
+
+=back
+
+C<$name> - place holder
+
+=head2 use ($module, @import)
 
 =head1 DIAGNOSTICS
 
@@ -180,6 +232,8 @@ Please report problems to Ivan Wills (ivan.wills@gmail.com).
 Patches are welcome.
 
 =head1 AUTHOR
+
+Inspired by http://blogs.perl.org/users/brian_d_foy/2012/02/what-if-we-could-drop-archives-into-inc.html
 
 Ivan Wills - (ivan.wills@gmail.com)
 

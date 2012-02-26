@@ -1,0 +1,15 @@
+Archive::Simple 0.0.1
+./errors.err	0	27
+./ip-test-1.0.pla	27	54
+lib/IP/Test.pm	54	124	version=1	package=IP::Test
+
+-e:0:QuickFix (tie) active
+-e:0:QuickFix (tie) active
+package IP::Test;
+
+use strict;
+use warnings;
+
+our $VERSION = 1.0;
+
+1;

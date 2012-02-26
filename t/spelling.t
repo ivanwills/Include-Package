@@ -30,5 +30,6 @@ add_stopwords(qw/
     Hornsby
     Param
     eg
+    TODO
 /);
 all_pod_files_spelling_ok();
