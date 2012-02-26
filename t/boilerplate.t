@@ -52,5 +52,5 @@ TODO: {
 
 }
 
-module_boilerplate_ok('lib/Include-Package/t/boilerplate.t.pm');
+module_boilerplate_ok('lib/Include/Package.pm');
 
